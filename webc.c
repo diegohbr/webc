@@ -5,12 +5,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+// This structure defines a way to store the received data from the API call.
 struct MemoryStruct {
   char *memory;
   size_t size;
 };
 
+// This function is a callback function used by CURL during the transfer. It's
+// called repeatedly with chunks of data received from the server.
 size_t write_data(void *contents, size_t size, size_t nmemb, void *userp) {
   size_t realsize = size * nmemb;
   struct MemoryStruct *mem = (struct MemoryStruct *)userp;
@@ -51,15 +53,41 @@ int main(void) {
     fprintf(stderr, "curl_easy_perform() failed: %s\n",
             curl_easy_strerror(res));
     return 1;
-  } else {
-    printf("\n%s\n", chunk.memory);
-
-    printf("%lu bytes retrieved\n", (unsigned long)chunk.size);
   }
   curl_easy_cleanup(curl);
 
   /** JSON **/
+  cJSON *json = cJSON_Parse(chunk.memory);
 
+  if (json == NULL) {
+    fprintf(stderr, "Error parsing JSON data: %s\n", cJSON_GetErrorPtr());
+  } else {
+    // Check if the parsed data is an array
+    if (cJSON_IsArray(json)) {
+      int i;
+      cJSON *user;
+      // Loop through each user object in the array
+      for (i = 0; i < cJSON_GetArraySize(json); i++) {
+        user = cJSON_GetArrayItem(json, i);
+        // Check if the user object is valid
+        if (cJSON_IsObject(user)) {
+          // Get the "name" key-value pair
+          cJSON *name = cJSON_GetObjectItem(user, "name");
+          // Check if the "name" key exists and is a string
+          if (cJSON_IsString(name)) {
+            printf("User %d: %s\n", i + 1, name->valuestring);
+          } else {
+            fprintf(stderr, "Error: 'name' key not found or not a string\n");
+          }
+        } else {
+          fprintf(stderr, "Error: Unexpected data type at index %d\n", i);
+        }
+      }
+    } else {
+      fprintf(stderr, "Error: Expected JSON array\n");
+    }
+    cJSON_Delete(json);
+  }
   /** MYSQL **/
 
   free(chunk.memory);
